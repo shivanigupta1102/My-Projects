@@ -1,0 +1,17 @@
+{
+  "name": "listingpilot",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "predev": "npm run build --workspace=@listingpilot/channel-schemas --workspace=@listingpilot/shared-types --workspace=@listingpilot/ml-utils",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "clean": "turbo clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "packageManager": "npm@10.0.0"
+}

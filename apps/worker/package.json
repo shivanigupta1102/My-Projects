@@ -1,0 +1,24 @@
+{
+  "name": "@listingpilot/worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.25.0",
+    "ioredis": "^5.4.0",
+    "dotenv": "^16.4.0",
+    "@listingpilot/shared-types": "*",
+    "@listingpilot/channel-schemas": "*",
+    "@listingpilot/ml-utils": "*"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.9.0"
+  }
+}

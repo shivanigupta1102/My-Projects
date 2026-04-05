@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: 240 10% 3%;
+    --bg-surface: 240 14% 6%;
+    --bg-elevated: 240 14% 9%;
+    --bg-overlay: 240 14% 14%;
+    --border: 240 17% 15%;
+    --border-bright: 240 14% 20%;
+    --foreground: 240 17% 96%;
+    --foreground-muted: 240 5% 60%;
+    --accent: 239 84% 67%;
+    --accent-hover: 239 84% 74%;
+  }
+
+  body {
+    @apply bg-bg-base text-text-primary antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  /* Tabular numbers for data display */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Skeleton shimmer loader */
+  .skeleton {
+    @apply relative overflow-hidden bg-bg-overlay;
+    background: linear-gradient(
+      90deg,
+      #1A1A2A 0%,
+      #2A2A40 50%,
+      #1A1A2A 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Focus ring for accessibility */
+  .focus-ring {
+    @apply outline-none focus-visible:shadow-glow-indigo;
+  }
+
+  /* Confidence dot indicator */
+  .confidence-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+  .confidence-dot-high { @apply bg-confidence-high; }
+  .confidence-dot-medium { @apply bg-confidence-medium; }
+  .confidence-dot-low { @apply bg-confidence-low; }
+
+  /* Compliance severity badges */
+  .compliance-blocking {
+    @apply bg-compliance-blocking-bg border border-compliance-blocking-border text-red-300;
+  }
+  .compliance-error {
+    @apply bg-compliance-error-bg border border-compliance-error text-amber-300;
+  }
+  .compliance-warning {
+    @apply bg-compliance-warning-bg border border-compliance-warning text-yellow-300;
+  }
+  .compliance-info {
+    @apply bg-compliance-info-bg border border-compliance-info text-blue-300;
+  }
+  .compliance-pass {
+    @apply bg-compliance-pass-bg border border-compliance-pass text-green-300;
+  }
+}
+
+@layer utilities {
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

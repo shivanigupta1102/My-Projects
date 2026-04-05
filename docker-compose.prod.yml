@@ -1,0 +1,35 @@
+# Production overlay: use with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up`
+# Build images first: docker build -t listingpilot-api:latest -f apps/api/Dockerfile .
+#                    docker build -t listingpilot-web:latest -f apps/web/Dockerfile .
+
+services:
+  api:
+    image: listingpilot-api:latest
+    container_name: listingpilot-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  web:
+    image: listingpilot-web:latest
+    container_name: listingpilot-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - api

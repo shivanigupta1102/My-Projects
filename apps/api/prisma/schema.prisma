@@ -1,0 +1,629 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE_TRIAL
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  OPERATOR
+  REVIEWER
+  VIEWER
+}
+
+enum Channel {
+  AMAZON
+  EBAY
+  WALMART
+  SHOPIFY
+  ETSY
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  PENDING_AUTH
+}
+
+enum IngestionStatus {
+  PENDING
+  PROCESSING
+  EXTRACTING
+  BUILDING
+  COMPLETE
+  FAILED
+}
+
+enum AssetType {
+  IMAGE
+  PDF
+  CSV
+  XLSX
+  URL
+  SPREADSHEET
+  UNKNOWN
+}
+
+enum ProductStatus {
+  DRAFT
+  REVIEW_READY
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ReviewStatus {
+  NEEDS_REVIEW
+  IN_REVIEW
+  APPROVED
+}
+
+enum ExtractionMethod {
+  OCR
+  IMAGE_VISION
+  LLM_INFERENCE
+  STRUCTURED_PARSE
+  URL_SCRAPE
+  API_LOOKUP
+  SELLER_CONFIRMED
+  PRIOR_LISTING
+}
+
+enum PackageStatus {
+  DRAFT
+  VALIDATED
+  APPROVED
+  PUBLISHED
+  FAILED
+  SUPPRESSED
+}
+
+enum Severity {
+  INFO
+  WARNING
+  ERROR
+  BLOCKING
+}
+
+enum PublishStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  ROLLED_BACK
+}
+
+enum MonitorStatus {
+  ACTIVE
+  PAUSED
+  SUPPRESSED
+  ERROR
+}
+
+enum RemediationType {
+  SUPPRESSION_FIX
+  MISSING_REQUIRED
+  CATEGORY_MISMATCH
+  CONTENT_DRIFT
+  DISCOVERABILITY
+  CONVERSION
+}
+
+enum RemediationStatus {
+  OPEN
+  APPLIED
+  DISMISSED
+}
+
+enum ComplianceSeverity {
+  BLOCKING
+  ERROR
+  WARNING
+  INFO
+}
+
+enum ComplianceGateStatus {
+  PENDING
+  PASSED
+  BLOCKED
+}
+
+enum GtinType {
+  UPC
+  EAN
+  ISBN
+  GTIN_14
+}
+
+enum GtinStatus {
+  UNVERIFIED
+  OWNER_CONFIRMED
+  BRAND_REGISTRY
+  EXEMPTION_GRANTED
+  INVALID
+}
+
+enum BrandRegistryStatus {
+  NOT_REGISTERED
+  PENDING
+  REGISTERED
+  UNKNOWN
+}
+
+enum CategoryMappingMethod {
+  AI_INFERRED
+  SELLER_CONFIRMED
+  PRIOR_LISTING
+}
+
+enum BulkOpType {
+  PUBLISH
+  RELIST
+  PRICE_UPDATE
+  DELIST
+  CATEGORY_REMAP
+}
+
+enum BulkOpStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  plan             Plan
+  monthlyTokenUsage Int     @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users            User[]
+  channelAccounts  ChannelAccount[]
+  ingestionJobs    IngestionJob[]
+  products         Product[]
+  auditLogs        AuditLog[]
+  imageAssets      ImageAsset[]
+  categoryMappings CategoryMapping[]
+  complianceChecks ComplianceCheck[]
+  gtinRecords      GtinRecord[]
+  bulkOperations   BulkOperation[]
+}
+
+model User {
+  id               String       @id @default(cuid())
+  email            String       @unique
+  passwordHash     String
+  role             Role
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokenHash String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model ChannelAccount {
+  id               String         @id @default(cuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel          Channel
+  name             String
+  externalId       String?
+  credentialsJson  Json
+  status           AccountStatus
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, channel])
+  @@index([organizationId, status])
+}
+
+model IngestionJob {
+  id               String          @id @default(cuid())
+  organizationId   String
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status           IngestionStatus
+  sourceLabel      String?
+  errorMessage     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  completedAt      DateTime?
+
+  assets           SourceAsset[]
+  products         Product[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+model SourceAsset {
+  id                 String       @id @default(cuid())
+  ingestionJobId     String
+  ingestionJob       IngestionJob @relation(fields: [ingestionJobId], references: [id], onDelete: Cascade)
+  type               AssetType
+  originalFilename   String
+  storageKey         String
+  mimeType           String?
+  sizeBytes          Int?
+  checksumSha256     String?
+  metadataJson       Json?
+  createdAt          DateTime     @default(now())
+
+  evidence           Evidence[]
+  imageAssets        ImageAsset[]
+
+  @@index([ingestionJobId])
+}
+
+model Product {
+  id               String         @id @default(cuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingestionJobId   String?
+  ingestionJob     IngestionJob?  @relation(fields: [ingestionJobId], references: [id], onDelete: SetNull)
+
+  title            String?
+  brand            String?
+  modelNumber      String?
+  upc              String?
+  ean              String?
+  asin             String?
+
+  status           ProductStatus
+  reviewStatus     ReviewStatus
+  completeness     Float          @default(0)
+  canonicalJson    Json?
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  variants         Variant[]
+  attributes       Attribute[]
+  evidenceRecords  Evidence[]
+  listingPackages  ListingPackage[]
+  monitors         Monitor[]
+  imageAssets      ImageAsset[]
+  categoryMappings CategoryMapping[]
+  gtinRecords      GtinRecord[]
+  bulkOperationItems BulkOperationItem[]
+  publishEvents    PublishEvent[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, reviewStatus])
+}
+
+model Variant {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku             String?
+  title           String
+  attributesJson  Json     @default("{}")
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model Attribute {
+  id               String           @id @default(cuid())
+  productId        String
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fieldName        String
+  value            String
+  normalizedValue  String?
+  confidence       Float
+  method           ExtractionMethod
+  requiresReview   Boolean          @default(false)
+  conflicted       Boolean          @default(false)
+  gtinValidated             Boolean          @default(false)
+  channelSpecificOverrides  Json?
+  prohibitedOnChannels      Channel[]
+  approvedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  evidence         Evidence[]
+
+  @@index([productId])
+  @@index([productId, fieldName])
+}
+
+model Evidence {
+  id              String       @id @default(cuid())
+  productId       String
+  product         Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sourceAssetId   String?
+  sourceAsset     SourceAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
+  attributeId     String?
+  attribute       Attribute?   @relation(fields: [attributeId], references: [id], onDelete: SetNull)
+
+  snippet         String?
+  explanation     String
+  confidence      Float
+  regionJson      Json?
+  createdAt       DateTime     @default(now())
+
+  @@index([productId])
+  @@index([attributeId])
+  @@index([sourceAssetId])
+}
+
+model ListingPackage {
+  id               String       @id @default(cuid())
+  productId        String
+  product          Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  channel          Channel
+  status           PackageStatus
+  title            String?
+  bulletsJson      Json
+  description      String?
+  attributesJson   Json
+  keywordsJson     Json
+  searchKeywords     String[]
+  backendKeywords    String[]
+  itemSpecifics      Json?
+  etsyTags           String[]
+  shopifyMetafields  Json?
+  complianceGate     ComplianceGateStatus @default(PENDING)
+  adaptationNotes    String?
+  imagesJson       Json
+  qualityScore     Float?
+  payloadJson      Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  validations      Validation[]
+  publishEvents    PublishEvent[]
+  complianceChecks   ComplianceCheck[]
+
+  @@unique([productId, channel])
+  @@index([productId])
+  @@index([productId, status])
+}
+
+model Validation {
+  id                 String         @id @default(cuid())
+  listingPackageId   String
+  listingPackage     ListingPackage @relation(fields: [listingPackageId], references: [id], onDelete: Cascade)
+  field              String
+  rule               String
+  severity           Severity
+  message            String
+  suggestedFix       String?
+  createdAt          DateTime       @default(now())
+
+  @@index([listingPackageId])
+  @@index([listingPackageId, severity])
+}
+
+model PublishEvent {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  productId          String
+  product            Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  listingPackageId   String?
+  listingPackage     ListingPackage? @relation(fields: [listingPackageId], references: [id], onDelete: SetNull)
+  channelAccountId   String?
+  channel            Channel
+  status             PublishStatus
+  dryRun             Boolean         @default(false)
+  channelListingId   String?
+  errorMessage       String?
+  rawResponseJson    Json?
+  publishedAt        DateTime?
+  createdAt          DateTime        @default(now())
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([productId])
+}
+
+model Monitor {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  productId          String
+  product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  channel            Channel
+  channelListingId   String
+  status             MonitorStatus
+  healthScore        Float?
+  lastCheckedAt      DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  remediations       RemediationRecommendation[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([productId])
+}
+
+model RemediationRecommendation {
+  id                 String            @id @default(cuid())
+  monitorId          String
+  monitor            Monitor           @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  type               RemediationType
+  title              String
+  description        String
+  impactScore        Int
+  suggestedFixJson   Json
+  status             RemediationStatus
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([monitorId])
+  @@index([monitorId, status])
+}
+
+model ImageAsset {
+  id                String       @id @default(cuid())
+  sourceAssetId     String?
+  sourceAsset       SourceAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId         String?
+  product           Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  storageKey        String
+  processedKey      String?
+  thumbnailKey      String?
+  dominantColors    Json?
+  detectedObjects   Json?
+  hasWhiteBackground Boolean     @default(false)
+  aspectRatio       Float?
+  resolution        String?
+  qualityScore      Float?
+  complianceFlags   Json?
+  createdAt         DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([sourceAssetId])
+}
+
+model CategoryMapping {
+  id                  String               @id @default(cuid())
+  productId           String
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organizationId      String
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel             Channel
+  channelCategoryId   String
+  channelCategoryPath String
+  confidenceScore     Float
+  mappingMethod       CategoryMappingMethod
+  itemSpecifics       Json?
+  requiredAttributes  String[]
+  createdAt           DateTime             @default(now())
+
+  @@unique([productId, channel])
+  @@index([organizationId])
+  @@index([productId])
+}
+
+model ComplianceCheck {
+  id                String             @id @default(cuid())
+  listingPackageId  String
+  listingPackage    ListingPackage     @relation(fields: [listingPackageId], references: [id], onDelete: Cascade)
+  organizationId    String
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel           Channel
+  ruleId            String
+  severity          ComplianceSeverity
+  field             String
+  currentValue      String?
+  violation         String
+  suggestedFix      String?
+  autoFixAvailable  Boolean            @default(false)
+  autoFixApplied    Boolean            @default(false)
+  externalPolicyUrl String?
+  createdAt         DateTime           @default(now())
+
+  @@index([listingPackageId])
+  @@index([listingPackageId, severity])
+  @@index([organizationId])
+}
+
+model GtinRecord {
+  id                        String              @id @default(cuid())
+  productId                 String
+  product                   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organizationId            String
+  organization              Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gtin                      String
+  gtinType                  GtinType
+  verificationStatus        GtinStatus          @default(UNVERIFIED)
+  verificationMethod        String?
+  brandName                 String?
+  amazonBrandRegistryStatus BrandRegistryStatus @default(UNKNOWN)
+  exemptionReason           String?
+  createdAt                 DateTime            @default(now())
+
+  @@unique([productId, gtin])
+  @@index([organizationId])
+  @@index([productId])
+}
+
+model ChannelPolicy {
+  id            String   @id @default(cuid())
+  channel       Channel
+  policyKey     String
+  policyValue   Json
+  effectiveDate DateTime?
+  sourceUrl     String?
+  fetchedAt     DateTime @default(now())
+
+  @@unique([channel, policyKey])
+  @@index([channel])
+}
+
+model BulkOperation {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        String
+  operationType    BulkOpType
+  status           BulkOpStatus @default(QUEUED)
+  totalItems       Int          @default(0)
+  processedItems   Int          @default(0)
+  failedItems      Int          @default(0)
+  resultSummary    Json?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+
+  items            BulkOperationItem[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+model BulkOperationItem {
+  id               String        @id @default(cuid())
+  bulkOperationId  String
+  bulkOperation    BulkOperation @relation(fields: [bulkOperationId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  channel          Channel?
+  status           BulkOpStatus  @default(QUEUED)
+  errorMessage     String?
+  createdAt        DateTime      @default(now())
+
+  @@index([bulkOperationId])
+  @@index([productId])
+}
+
+model AuditLog {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?
+  action           String
+  entityType       String
+  entityId         String?
+  detailsJson      Json?
+  ipAddress        String?
+  createdAt        DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+}
