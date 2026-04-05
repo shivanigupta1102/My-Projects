@@ -21,7 +21,7 @@ export class DuplicateDetectionService {
   ): Promise<DuplicateCandidate[]> {
     this.logger.log(`Checking for semantic duplicates in org ${organizationId}`);
 
-    // Embeds product title+description via Claude Embeddings or text-embedding-3-small
+    // Embeds product title+description via Groq/OpenAI-compatible embeddings
     // Stores vector in Qdrant, queries for cosine similarity > 0.92
     // Surfaces potential duplicates before creating new Product
     const qdrantUrl = this.config.get<string>('QDRANT_URL', 'http://localhost:6333');

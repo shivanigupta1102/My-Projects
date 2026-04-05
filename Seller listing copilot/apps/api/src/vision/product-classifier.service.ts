@@ -18,7 +18,7 @@ export class ProductClassifierService {
   ): Promise<ClassificationResult> {
     this.logger.log(`Classifying product for ${channel}`);
 
-    // Uses Claude with category taxonomy documents as context
+    // Uses Groq (Llama 4 Scout) with category taxonomy documents as context
     // Also queries Qdrant for semantic similarity against prior confirmed mappings
     return {
       channel,

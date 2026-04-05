@@ -21,6 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiGet, apiPatch } from "@/lib/api";
 
+function resolveImageBase(): string {
+  if (typeof window === "undefined") return "http://localhost:4000/api/v1";
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000/api/v1";
+  return `${window.location.origin}/api/v1`;
+}
+
 interface Product {
   id: string;
   title: string | null;
@@ -158,14 +165,18 @@ export default function ReviewListingPage() {
       setLoading(true);
       const [prod, attrs, imgs] = await Promise.all([
         apiGet<Product>(`/products/${id}`),
-        apiGet<Attribute[]>(`/products/${id}/attributes`),
+        apiGet<Attribute[]>(`/products/${id}/attributes`).catch(() => [] as Attribute[]),
         apiGet<ProductImage[]>(`/products/${id}/images`).catch(
           () => [] as ProductImage[],
         ),
       ]);
       setProduct(prod);
       setAttributes(attrs);
-      setImages(imgs);
+      const apiBase = resolveImageBase();
+      setImages(imgs.map((img) => ({
+        ...img,
+        url: img.url.startsWith("http") ? img.url : `${apiBase}${img.url}`,
+      })));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load product");

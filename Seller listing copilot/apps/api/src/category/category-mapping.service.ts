@@ -19,7 +19,7 @@ export class CategoryMappingService {
   ): Promise<MappingResult> {
     this.logger.log(`Mapping product to ${channel} category`);
 
-    // Uses Claude with channel-specific category taxonomy documents loaded as context
+    // Uses Groq (Llama 4 Scout) with channel-specific category taxonomy documents as context
     // Also queries Qdrant for semantic similarity against prior confirmed mappings
     return {
       channel,

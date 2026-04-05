@@ -180,15 +180,57 @@ export class ProductsService {
 
     const results = [];
     for (const asset of assets) {
-      const url = await this.storage.getPresignedGetUrl(asset.storageKey, 3600);
       results.push({
         id: asset.id,
         filename: asset.originalFilename,
         mimeType: asset.mimeType,
-        url,
+        url: `/products/${productId}/images/${asset.id}/raw`,
       });
     }
     return results;
+  }
+
+  async getImageFile(organizationId: string, productId: string, assetId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const asset = await this.prisma.sourceAsset.findFirst({
+      where: { id: assetId, ingestionJobId: product.ingestionJobId ?? undefined },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+
+    const buffer = await this.storage.getObjectBuffer(asset.storageKey);
+    return { buffer, mimeType: asset.mimeType };
+  }
+
+  async getImageFilePublic(productId: string, assetId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const asset = await this.prisma.sourceAsset.findFirst({
+      where: { id: assetId, ingestionJobId: product.ingestionJobId ?? undefined },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+
+    const buffer = await this.storage.getObjectBuffer(asset.storageKey);
+    return { buffer, mimeType: asset.mimeType };
+  }
+
+  async clearExtractionErrors(productId: string) {
+    await this.prisma.attribute.deleteMany({
+      where: { productId, fieldName: 'ingestion.ai_extraction_error' },
+    });
+  }
+
+  async getSourceAssets(ingestionJobId: string) {
+    return this.prisma.sourceAsset.findMany({
+      where: { ingestionJobId },
+      select: { id: true, type: true },
+    });
   }
 
   private async ensureOrg(organizationId: string, productId: string): Promise<void> {

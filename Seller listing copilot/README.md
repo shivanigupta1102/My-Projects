@@ -77,47 +77,117 @@ Turborepo monorepo with npm workspaces:
 
 ### Prerequisites
 
-- **Node.js 20+** and **npm 10+**
-- **Docker** and **Docker Compose**
+| Tool | Version | Check | Install |
+|------|---------|-------|---------|
+| **Node.js** | 20+ | `node -v` | [nodejs.org](https://nodejs.org/) or `brew install node` |
+| **npm** | 10+ | `npm -v` | Comes with Node.js |
+| **Docker** | 24+ | `docker -v` | [docker.com](https://docs.docker.com/get-docker/) or `brew install --cask docker` |
+| **Docker Compose** | v2+ | `docker compose version` | Included with Docker Desktop |
+| **Git** | any | `git -v` | `brew install git` or [git-scm.com](https://git-scm.com/) |
 
-### Setup
+### Step 1 — Clone the Repository
 
 ```bash
-# 1. Clone and enter the project
 git clone https://github.com/shivanigupta1102/My-Projects.git
 cd My-Projects
 cd "Seller listing copilot"
+```
 
-# 2. Copy environment variables
-cp .env.example .env
-cp .env.example apps/api/.env
+### Step 2 — Start Infrastructure (PostgreSQL, Redis, MinIO, MailHog, Qdrant)
 
-# 3. Start infrastructure (PostgreSQL, Redis, MinIO, MailHog, Qdrant)
+```bash
 docker compose up -d
+```
 
-# 4. Install dependencies
+Verify all 5 containers are running:
+
+```bash
+docker compose ps
+```
+
+You should see `listingpilot-postgres`, `listingpilot-redis`, `listingpilot-minio`, `listingpilot-mailhog`, and `listingpilot-qdrant` all in a healthy/running state. If Docker is not installed, you can run these services natively — see the ports and credentials in `docker-compose.yml`.
+
+### Step 3 — Install Dependencies
+
+```bash
 npm install
+```
 
-# 5. Run database migrations and generate the Prisma client
-make db
+### Step 4 — Configure Environment Variables
 
-# 6. Seed the database (creates demo users, products, compliance checks, GTIN records)
-make seed
+```bash
+cp .env.example apps/api/.env
+```
 
-# 7. Start dev servers (builds shared packages, then starts API + web)
+Then edit `apps/api/.env` and set your **Groq API key** (free tier):
+
+```bash
+# Get a free key at https://console.groq.com/keys
+# Open the file and replace the placeholder:
+nano apps/api/.env
+```
+
+Set this line (replace the placeholder with your actual key):
+
+```
+GROQ_API_KEY=gsk_YOUR_KEY_HERE
+```
+
+> **Note:** A built-in demo key is hardcoded as a fallback so the app will work without this step, but it may hit rate limits. For reliable usage, set your own key.
+
+### Step 5 — Run Database Migrations & Seed
+
+```bash
+# Generate the Prisma client
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+# Run migrations to create all tables
+npx prisma migrate dev --schema=apps/api/prisma/schema.prisma
+
+# Seed with demo data (users, products, compliance checks)
+npm run prisma:seed --workspace=apps/api
+```
+
+### Step 6 — Build Shared Packages
+
+```bash
+npm run build --workspace=@listingpilot/shared-types
+npm run build --workspace=@listingpilot/channel-schemas
+npm run build --workspace=@listingpilot/ml-utils
+```
+
+### Step 7 — Start the Dev Servers
+
+**Option A — Both servers at once (using Makefile):**
+
+```bash
 make dev
 ```
 
-### Access Points
+**Option B — Start each server manually (two terminals):**
+
+Terminal 1 — Backend API:
+
+```bash
+npm run dev --workspace=apps/api
+```
+
+Terminal 2 — Frontend:
+
+```bash
+npm run dev --workspace=apps/web
+```
+
+### Step 8 — Open the App
 
 | Service | URL |
 |---------|-----|
-| Web UI | http://localhost:3000 |
-| API | http://localhost:4000/api/v1 |
-| Swagger Docs | http://localhost:4000/docs |
-| MinIO Console | http://localhost:9001 |
-| MailHog UI | http://localhost:8025 |
-| Qdrant Dashboard | http://localhost:6333 |
+| **Web UI** | http://localhost:3000 |
+| **API** | http://localhost:4000/api/v1 |
+| **Swagger Docs** | http://localhost:4000/docs |
+| **MinIO Console** | http://localhost:9001 (minioadmin / minioadmin) |
+| **MailHog UI** | http://localhost:8025 |
+| **Qdrant Dashboard** | http://localhost:6333/dashboard |
 
 ### Demo Credentials
 
@@ -125,6 +195,42 @@ make dev
 |------|-------|----------|
 | Admin | `admin@demo.com` | `demo1234` |
 | Seller | `seller@demo.com` | `demo1234` |
+
+### Access from Another Machine (LAN)
+
+The dev servers bind to `0.0.0.0`, so they are accessible from other machines on your network. Find your local IP with:
+
+```bash
+# macOS
+ipconfig getifaddr en0
+
+# Linux
+hostname -I | awk '{print $1}'
+```
+
+Then open `http://<YOUR_IP>:3000` from the other machine.
+
+### Access via Ngrok (External / Public URL)
+
+```bash
+# Install ngrok: https://ngrok.com/download
+ngrok http 3000
+```
+
+Open the ngrok URL in any browser. All API calls are proxied through the Next.js server, so images, descriptions, and attributes work through ngrok automatically.
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `EADDRINUSE: address already in use :::4000` | Kill stale process: `lsof -ti:4000 \| xargs kill -9` |
+| `EADDRINUSE: address already in use :::3000` | Kill stale process: `lsof -ti:3000 \| xargs kill -9` |
+| AI extraction shows "401 Missing Authentication header" | Set `GROQ_API_KEY` in `apps/api/.env` — get a free key at https://console.groq.com/keys |
+| No description / item specifics after ingestion | Check backend logs for "AI vision extraction failed". Click "Retry AI Extraction" on the preview page |
+| Images not loading via ngrok | Images are served through a public `/raw` endpoint — restart both servers after pulling latest code |
+| `docker compose up` fails | Make sure Docker Desktop is running. On Linux, ensure your user is in the `docker` group |
+| `prisma migrate dev` hangs | Ensure PostgreSQL is running: `docker compose ps` — the `listingpilot-postgres` container should be healthy |
+| Frontend crash: `require is not defined` | Run `npm install` again — `tailwindcss-animate` may be missing |
 
 ## Project Structure
 

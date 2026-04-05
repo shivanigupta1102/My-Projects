@@ -19,11 +19,11 @@ export class ImageAnalysisService {
     void this.config;
     this.logger.log(`Analyzing image (${mimeType}, ${imageBuffer.length} bytes)`);
 
-    // Claude vision multimodal analysis
+    // Groq vision multimodal analysis (Llama 4 Scout)
     const base64 = imageBuffer.toString('base64');
     void base64;
 
-    // TODO: Integrate with Claude vision API for object detection, text extraction, and labeling
+    // TODO: Integrate with Groq vision API for object detection, text extraction, and labeling
     // Also supports optional Google Vision API for enhanced object detection and CLIP for similarity
     return {
       objects: [],

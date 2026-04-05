@@ -25,7 +25,15 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
+import { toast } from "sonner";
+
+function resolveImageBase(): string {
+  if (typeof window === "undefined") return "http://localhost:4000/api/v1";
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000/api/v1";
+  return `${window.location.origin}/api/v1`;
+}
 
 interface Product {
   id: string;
@@ -275,6 +283,7 @@ export default function ListingPreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [selectedChannel, setSelectedChannel] = useState<ChannelId>("EBAY");
+  const [retrying, setRetrying] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -282,13 +291,17 @@ export default function ListingPreviewPage() {
       setLoading(true);
       const [prod, attrs, imgs, pkgs] = await Promise.all([
         apiGet<Product>(`/products/${id}`),
-        apiGet<Attribute[]>(`/products/${id}/attributes`),
+        apiGet<Attribute[]>(`/products/${id}/attributes`).catch(() => [] as Attribute[]),
         apiGet<ProductImage[]>(`/products/${id}/images`).catch(() => [] as ProductImage[]),
         apiGet<ListingPackage[]>(`/listing-packages/product/${id}`).catch(() => [] as ListingPackage[]),
       ]);
       setProduct(prod);
       setAttributes(attrs);
-      setImages(imgs);
+      const apiBase = resolveImageBase();
+      setImages(imgs.map((img) => ({
+        ...img,
+        url: img.url.startsWith("http") ? img.url : `${apiBase}${img.url}`,
+      })));
       setPackages(pkgs);
       setError(null);
     } catch (e) {
@@ -325,6 +338,27 @@ export default function ListingPreviewPage() {
       </div>
     );
   }
+
+  const extractionError = attributes.find((a) => a.fieldName === "ingestion.ai_extraction_error")?.value ?? null;
+
+  const handleRetryExtraction = async () => {
+    setRetrying(true);
+    try {
+      const result = await apiPost<{ queued: number; message: string }>(`/products/${id}/retry-extraction`);
+      if (result.queued === 0) {
+        toast.warning(result.message || "No assets to re-extract");
+      } else {
+        toast.success(`Re-queued ${result.queued} asset(s) — waiting for extraction…`);
+        await new Promise((r) => setTimeout(r, 6000));
+        await fetchData();
+        toast.success("Data refreshed");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Retry extraction failed");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const dedupedAttrs = (() => {
     const seen = new Map<string, Attribute>();
@@ -639,18 +673,18 @@ export default function ListingPreviewPage() {
               )}
 
               {/* Description */}
-              {getChannelDesc(currentChannel) && (
-                <div className="mt-8">
-                  <div className="mb-3 flex items-center justify-between border-b border-border/50 pb-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground-muted">
-                      {currentChannel.id === "EBAY" ? "Item Description" : currentChannel.id === "AMAZON" ? "Product Description" : "Description"}
-                    </h2>
-                    {humanDescription && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-0.5 text-[10px] font-medium text-green-400">
-                        <Zap className="h-3 w-3" />AI-Written
-                      </span>
-                    )}
-                  </div>
+              <div className="mt-8">
+                <div className="mb-3 flex items-center justify-between border-b border-border/50 pb-2">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground-muted">
+                    {currentChannel.id === "EBAY" ? "Item Description" : currentChannel.id === "AMAZON" ? "Product Description" : "Description"}
+                  </h2>
+                  {humanDescription && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-0.5 text-[10px] font-medium text-green-400">
+                      <Zap className="h-3 w-3" />AI-Written
+                    </span>
+                  )}
+                </div>
+                {getChannelDesc(currentChannel) ? (
                   <div className="rounded-lg border border-border/30 bg-[#1a1c22] p-5">
                     <div className="text-[15px] leading-[1.75] text-foreground/90">
                       {getChannelDesc(currentChannel)!.split("\n").filter(Boolean).map((p, i) => (
@@ -658,8 +692,34 @@ export default function ListingPreviewPage() {
                       ))}
                     </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-5">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-300">No description generated</p>
+                        {extractionError ? (
+                          <p className="mt-1 rounded bg-red-500/10 p-2 font-mono text-[11px] text-red-400">{extractionError}</p>
+                        ) : (
+                          <p className="mt-1 text-xs text-amber-400/70">
+                            AI extraction may have failed. Check that the Groq API key is valid and reachable from this machine.
+                          </p>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3 gap-1 border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                          onClick={handleRetryExtraction}
+                          disabled={retrying}
+                        >
+                          {retrying ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" /> : <Zap className="h-3 w-3" />}
+                          {retrying ? "Extracting…" : "Retry AI Extraction"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Bullets (Amazon, Shopify, Walmart, Etsy) */}
               {currentChannel.bulletLimit > 0 && getChannelBullets(currentChannel).length > 0 && (
@@ -679,11 +739,11 @@ export default function ListingPreviewPage() {
               )}
 
               {/* Item Specifics */}
-              {specificsAttrs.length > 0 && (
-                <div className="mt-8">
-                  <h2 className="mb-3 border-b border-border/50 pb-2 text-sm font-semibold uppercase tracking-wide text-foreground-muted">
-                    {currentChannel.id === "EBAY" ? "Item Specifics" : currentChannel.id === "AMAZON" ? "Product Information" : "Product Details"}
-                  </h2>
+              <div className="mt-8">
+                <h2 className="mb-3 border-b border-border/50 pb-2 text-sm font-semibold uppercase tracking-wide text-foreground-muted">
+                  {currentChannel.id === "EBAY" ? "Item Specifics" : currentChannel.id === "AMAZON" ? "Product Information" : "Product Details"}
+                </h2>
+                {specificsAttrs.length > 0 ? (
                   <div className="overflow-hidden rounded-lg border border-border/50">
                     <table className="w-full">
                       <tbody>
@@ -698,8 +758,36 @@ export default function ListingPreviewPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-5">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-300">No item specifics extracted</p>
+                        {extractionError ? (
+                          <p className="mt-1 rounded bg-red-500/10 p-2 font-mono text-[11px] text-red-400">{extractionError}</p>
+                        ) : (
+                          <p className="mt-1 text-xs text-amber-400/70">
+                            AI extraction may not have completed. Verify the Groq API key and network connectivity.
+                          </p>
+                        )}
+                        {!fullDescription && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-3 gap-1 border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                            onClick={handleRetryExtraction}
+                            disabled={retrying}
+                          >
+                            {retrying ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" /> : <Zap className="h-3 w-3" />}
+                            {retrying ? "Extracting…" : "Retry AI Extraction"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* RIGHT — Channel-specific details panel */}

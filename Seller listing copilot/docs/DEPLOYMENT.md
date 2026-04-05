@@ -114,10 +114,11 @@ volumes:
 | `S3_SECRET_ACCESS_KEY` | Yes | S3/MinIO secret key |
 | `S3_FORCE_PATH_STYLE` | No | `true` for MinIO |
 | `S3_PUBLIC_BASE_URL` | No | Public URL prefix for assets |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic Claude API key |
-| `ANTHROPIC_MODEL` | No | Model name (default `claude-sonnet-4-20250514`) |
-| `ANTHROPIC_MAX_RETRIES` | No | Max retries (default `3`) |
-| `ANTHROPIC_MAX_TOKENS` | No | Max tokens (default `4096`) |
+| `GROQ_API_KEY` | No | Groq API key (free at https://console.groq.com/keys). Falls back to built-in demo key |
+| `OPENROUTER_BASE_URL` | No | LLM API base URL (default `https://api.groq.com/openai/v1`) |
+| `OPENROUTER_MODEL` | No | Model name (default `meta-llama/llama-4-scout-17b-16e-instruct`) |
+| `AI_MAX_RETRIES` | No | Max retries (default `3`) |
+| `AI_MAX_TOKENS` | No | Max tokens (default `4096`) |
 | `CORS_ORIGIN` | No | Frontend origin(s), comma-separated (default: allow all) |
 
 ### Frontend (`apps/web`)

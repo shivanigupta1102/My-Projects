@@ -4,7 +4,7 @@ import aiConfig from '@/config/ai.config';
 import { DatabaseModule } from '@/config/database.module';
 import { IngestionModule } from '@/ingestion/ingestion.module';
 import { StorageModule } from '@/storage/storage.module';
-import { ClaudeService } from './claude.service';
+import { LlmService } from './llm.service';
 import { ExtractionPipeline } from './extraction.pipeline';
 import { OcrService } from './ocr.service';
 import { VisionService } from './vision.service';
@@ -16,7 +16,7 @@ import { VisionService } from './vision.service';
     StorageModule,
     IngestionModule,
   ],
-  providers: [ClaudeService, OcrService, VisionService, ExtractionPipeline],
-  exports: [ClaudeService, OcrService, VisionService, ExtractionPipeline],
+  providers: [LlmService, OcrService, VisionService, ExtractionPipeline],
+  exports: [LlmService, OcrService, VisionService, ExtractionPipeline],
 })
 export class AiModule {}

@@ -7,7 +7,7 @@ import { ImageProcessor } from '@/ingestion/processors/image.processor';
 import { PdfProcessor } from '@/ingestion/processors/pdf.processor';
 import { UrlProcessor } from '@/ingestion/processors/url.processor';
 import { computeConfidence } from '@/products/confidence.scorer';
-import { ClaudeService } from './claude.service';
+import { LlmService } from './llm.service';
 import { OcrService } from './ocr.service';
 import { VisionService } from './vision.service';
 import { EXTRACT_ATTRIBUTES_SYSTEM, buildExtractAttributesUserPrompt } from './prompts/extract-attributes.prompt';
@@ -36,7 +36,7 @@ export class ExtractionPipeline {
     private readonly url: UrlProcessor,
     private readonly ocr: OcrService,
     private readonly vision: VisionService,
-    private readonly claude: ClaudeService,
+    private readonly llm: LlmService,
   ) {}
 
   async run(input: PipelineInput): Promise<void> {
@@ -171,7 +171,7 @@ export class ExtractionPipeline {
         fieldHints: ['title', 'brand', 'description'],
         sourceText: buffer.toString('utf8').slice(0, 12000),
       });
-      const json = await this.claude.completeJson({
+      const json = await this.llm.completeJson({
         organizationId: input.organizationId,
         system: `${EXTRACT_ATTRIBUTES_SYSTEM}\n\n${this.SYSTEM_GUARDRAILS}`,
         user,

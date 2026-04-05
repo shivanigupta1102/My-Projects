@@ -2,6 +2,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
 import { createHash } from 'crypto';
+import sharp from 'sharp';
 import {
   AssetType,
   ExtractionMethod,
@@ -17,6 +18,8 @@ import { PdfProcessor } from '@/ingestion/processors/pdf.processor';
 import { ListingPackagesService } from '@/listing-packages/listing-packages.service';
 import { StorageService } from '@/storage/storage.service';
 import { VisionService } from '@/ai/vision.service';
+
+const MAX_VISION_BASE64_BYTES = 3 * 1024 * 1024; // 3MB leaves headroom under Groq's 4MB request limit
 
 export interface IngestAssetJobPayload {
   organizationId: string;
@@ -153,16 +156,21 @@ export class IngestAssetProcessor {
           });
       }
 
-      await this.prisma.attribute.create({
-        data: {
-          productId: product.id,
-          fieldName: 'ingestion.source',
-          value: asset.originalFilename,
-          confidence: 0.9,
-          method: ExtractionMethod.STRUCTURED_PARSE,
-          requiresReview: false,
-        },
+      const existingSource = await this.prisma.attribute.findFirst({
+        where: { productId: product.id, fieldName: 'ingestion.source', value: asset.originalFilename },
       });
+      if (!existingSource) {
+        await this.prisma.attribute.create({
+          data: {
+            productId: product.id,
+            fieldName: 'ingestion.source',
+            value: asset.originalFilename,
+            confidence: 0.9,
+            method: ExtractionMethod.STRUCTURED_PARSE,
+            requiresReview: false,
+          },
+        });
+      }
 
       await this.markCompleteIfReady(ingestionJobId);
     } catch (err) {
@@ -178,6 +186,40 @@ export class IngestAssetProcessor {
     }
   }
 
+  private async compressForVision(buffer: Buffer, mimeType: string): Promise<{ base64: string; mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' }> {
+    const raw64 = buffer.toString('base64');
+    const rawBytes = Buffer.byteLength(raw64, 'utf8');
+    const mediaType = this.normalizeMediaType(mimeType);
+
+    if (rawBytes <= MAX_VISION_BASE64_BYTES) {
+      this.logger.log(`Image is small enough (${(rawBytes / 1024 / 1024).toFixed(1)}MB base64), no compression needed`);
+      return { base64: raw64, mediaType };
+    }
+
+    this.logger.log(`Image too large (${(rawBytes / 1024 / 1024).toFixed(1)}MB base64), compressing for Groq vision...`);
+
+    let quality = 80;
+    let maxDim = 2048;
+    let compressed: Buffer = buffer;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      compressed = await sharp(buffer)
+        .resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality, mozjpeg: true })
+        .toBuffer();
+
+      const b64Len = Math.ceil(compressed.length * 4 / 3);
+      this.logger.log(`Compression attempt ${attempt + 1}: ${maxDim}px q${quality} → ${(compressed.length / 1024).toFixed(0)}KB (${(b64Len / 1024 / 1024).toFixed(1)}MB base64)`);
+
+      if (b64Len <= MAX_VISION_BASE64_BYTES) break;
+
+      maxDim = Math.round(maxDim * 0.7);
+      quality = Math.max(50, quality - 10);
+    }
+
+    return { base64: compressed.toString('base64'), mediaType: 'image/jpeg' };
+  }
+
   private async runVisionExtraction(
     organizationId: string,
     productId: string,
@@ -186,9 +228,10 @@ export class IngestAssetProcessor {
     mimeType: string,
   ): Promise<void> {
     try {
-      this.logger.log(`Running AI vision extraction for product=${productId}`);
-      const mediaType = this.normalizeMediaType(mimeType);
-      const imageBase64 = buffer.toString('base64');
+      this.logger.log(`Running AI vision extraction for product=${productId} (original: ${(buffer.length / 1024).toFixed(0)}KB)`);
+      const { base64: imageBase64, mediaType } = await this.compressForVision(buffer, mimeType);
+      this.logger.log(`Sending to Groq vision API: ${(Buffer.byteLength(imageBase64, 'utf8') / 1024 / 1024).toFixed(2)}MB base64, mediaType=${mediaType}`);
+
       const result = await this.vision.extractProductAttributes({
         organizationId,
         imageBase64,
@@ -203,8 +246,15 @@ export class IngestAssetProcessor {
       );
 
       for (const [field, value] of fieldEntries) {
-        const strValue = Array.isArray(value) ? value.join(', ') : String(value);
-        if (!strValue || strValue === 'null') continue;
+        let strValue: string;
+        if (Array.isArray(value)) {
+          strValue = value.join(', ');
+        } else if (typeof value === 'object') {
+          strValue = JSON.stringify(value);
+        } else {
+          strValue = String(value);
+        }
+        if (!strValue || strValue === 'null' || strValue === 'undefined') continue;
 
         const existing = await this.prisma.attribute.findFirst({
           where: { productId, fieldName: field },
@@ -244,6 +294,11 @@ export class IngestAssetProcessor {
         });
       }
 
+      this.logger.log(
+        `✅ AI vision extraction succeeded for product=${productId}: ${fieldEntries.length} attributes stored` +
+        (productTitle ? `, title="${productTitle.slice(0, 60)}"` : ', no title found'),
+      );
+
       await this.prisma.evidence.create({
         data: {
           productId,
@@ -254,9 +309,22 @@ export class IngestAssetProcessor {
         },
       });
     } catch (err) {
-      this.logger.warn(
-        `AI vision extraction failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `❌ AI vision extraction FAILED for product=${productId}: ${errMsg}. ` +
+        `Title and description will be missing. Check that the Groq API key is valid and the network can reach api.groq.com.`,
       );
+
+      await this.prisma.attribute.create({
+        data: {
+          productId,
+          fieldName: 'ingestion.ai_extraction_error',
+          value: errMsg.slice(0, 500),
+          confidence: 1,
+          method: ExtractionMethod.STRUCTURED_PARSE,
+          requiresReview: false,
+        },
+      }).catch(() => { /* best-effort */ });
     }
   }
 

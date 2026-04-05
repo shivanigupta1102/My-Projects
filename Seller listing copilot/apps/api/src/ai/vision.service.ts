@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ClaudeService } from './claude.service';
+import { LlmService } from './llm.service';
 
 const VISION_SYSTEM = `You are an expert product listing analyst. Your job is to extract EVERY possible attribute from product images with extreme thoroughness. You must catch details that others would miss.
 
@@ -76,14 +76,14 @@ Rules:
 export class VisionService {
   private readonly logger = new Logger(VisionService.name);
 
-  constructor(private readonly claude: ClaudeService) {}
+  constructor(private readonly llm: LlmService) {}
 
   async extractProductAttributes(params: {
     organizationId: string;
     imageBase64: string;
     mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
   }): Promise<Record<string, unknown>> {
-    return this.claude.visionJson({
+    return this.llm.visionJson({
       organizationId: params.organizationId,
       system: VISION_SYSTEM,
       user: `Analyze this product image with extreme attention to detail. Read ALL text visible anywhere in the image — on the product, labels, cases, stickers, packaging, certification slabs, etc.
@@ -122,7 +122,7 @@ Write the single paragraph now. Remember — ONE paragraph only, sound human and
 
     this.logger.log(`Generating human description for: ${title}`);
 
-    const text = await this.claude.completeText({
+    const text = await this.llm.completeText({
       organizationId: params.organizationId,
       system: DESCRIPTION_SYSTEM,
       user: prompt,
