@@ -88,9 +88,8 @@ Turborepo monorepo with npm workspaces:
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/shivanigupta1102/My-Projects.git
-cd My-Projects
-cd "Seller listing copilot"
+git clone https://github.com/himanshusapra9/Projects.git
+cd "Projects/Seller Listing Copilot"
 ```
 
 ### Step 2 — Start Infrastructure (PostgreSQL, Redis, MinIO, MailHog, Qdrant)
