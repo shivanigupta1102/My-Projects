@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { join } from 'path';
 import { AdaptationModule } from './adaptation/adaptation.module';
 import { AiModule } from './ai/ai.module';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -14,6 +15,7 @@ import { DatabaseModule } from './config/database.module';
 import redisConfig from './config/redis.config';
 import storageConfig from './config/storage.config';
 import { EvidenceModule } from './evidence/evidence.module';
+import { HealthModule } from './health/health.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { ListingPackagesModule } from './listing-packages/listing-packages.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
@@ -31,6 +33,11 @@ import { VisionModule } from './vision/vision.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [
+        join(__dirname, '..', '.env'),
+        join(__dirname, '..', '..', '.env'),
+        '.env',
+      ],
       load: [redisConfig, storageConfig, aiConfig],
     }),
     ScheduleModule.forRoot(),
@@ -42,6 +49,7 @@ import { VisionModule } from './vision/vision.module';
     IngestionModule,
     ProductsModule,
     EvidenceModule,
+    HealthModule,
     ReviewModule,
     AiModule,
     ListingPackagesModule,

@@ -56,6 +56,19 @@ async function bootstrap(): Promise<void> {
 
   const port = Number.parseInt(process.env.PORT ?? '4000', 10);
   await app.listen(port, '0.0.0.0');
+
+  const has = (v: string) => process.env[v] ? '✓' : '✗';
+  const aiSrc = process.env.GROQ_API_KEY ? 'GROQ env' : process.env.OPENROUTER_API_KEY ? 'OPENROUTER env' : 'built-in';
+  console.log(`\n┌─── ListingPilot Startup ───────────────────────────`);
+  console.log(`│ Server:    http://localhost:${port}`);
+  console.log(`│ Swagger:   http://localhost:${port}/docs`);
+  console.log(`│ Health:    http://localhost:${port}/api/v1/health`);
+  console.log(`│`);
+  console.log(`│ Database:  ${has('DATABASE_URL')} DATABASE_URL`);
+  console.log(`│ Redis:     ${has('REDIS_HOST')} REDIS_HOST`);
+  console.log(`│ Storage:   ${has('S3_ENDPOINT')} S3_ENDPOINT`);
+  console.log(`│ AI Key:    ${aiSrc}`);
+  console.log(`└────────────────────────────────────────────────────\n`);
 }
 
 bootstrap().catch((err: unknown) => {
