@@ -74,6 +74,7 @@ export class ProductsService {
         ...(dto.reviewStatus !== undefined ? { reviewStatus: dto.reviewStatus } : {}),
         ...(dto.modelNumber !== undefined ? { modelNumber: dto.modelNumber } : {}),
         ...(dto.upc !== undefined ? { upc: dto.upc } : {}),
+        ...(dto.ean !== undefined ? { ean: dto.ean } : {}),
       },
     });
   }

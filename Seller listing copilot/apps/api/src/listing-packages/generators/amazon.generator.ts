@@ -20,12 +20,21 @@ export class AmazonGenerator implements ChannelGenerator {
     const bullets = facts.bullets
       .slice(0, AMAZON_BULLET_LIMIT)
       .map((b) => this.clip(b, AMAZON_BULLET_CHAR_LIMIT));
+
+    const attrs = { ...facts.attributes };
+    const gtin = attrs['gtin'] || attrs['upc'] || attrs['ean'];
+    if (gtin) {
+      attrs['product_id_type'] = 'UPC';
+      attrs['product_id'] = String(gtin);
+      attrs['external_product_id'] = String(gtin);
+    }
+
     return {
       channel: this.channel,
       title,
       bullets,
       description: facts.description,
-      attributes: { ...facts.attributes },
+      attributes: attrs,
       keywords: facts.keywords,
       images: facts.images,
     };

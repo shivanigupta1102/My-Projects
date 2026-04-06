@@ -86,6 +86,11 @@ export class ListingPackagesService {
       delete channelAttrs[skip];
     }
 
+    if (product.upc) channelAttrs['upc'] = product.upc;
+    if (product.ean) channelAttrs['ean'] = product.ean;
+    const gtin = product.upc || product.ean || str('upc') || str('ean');
+    if (gtin) channelAttrs['gtin'] = gtin;
+
     return {
       title: product.title,
       brand: product.brand,

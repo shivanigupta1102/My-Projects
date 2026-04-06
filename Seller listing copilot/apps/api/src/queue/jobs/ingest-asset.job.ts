@@ -18,6 +18,7 @@ import { PdfProcessor } from '@/ingestion/processors/pdf.processor';
 import { ListingPackagesService } from '@/listing-packages/listing-packages.service';
 import { StorageService } from '@/storage/storage.service';
 import { VisionService } from '@/ai/vision.service';
+import { UpcLookupService } from '@/ai/upc-lookup.service';
 
 const MAX_VISION_BASE64_BYTES = 3 * 1024 * 1024; // 3MB leaves headroom under Groq's 4MB request limit
 
@@ -38,6 +39,7 @@ export class IngestAssetProcessor {
     private readonly csv: CsvProcessor,
     private readonly pdf: PdfProcessor,
     private readonly vision: VisionService,
+    private readonly upcLookup: UpcLookupService,
     private readonly listingPackages: ListingPackagesService,
   ) {}
 
@@ -308,6 +310,8 @@ export class IngestAssetProcessor {
           confidence: 0.8,
         },
       });
+
+      await this.runUpcLookup(productId, attrs);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -335,6 +339,135 @@ export class IngestAssetProcessor {
     if (mime.includes('gif')) return 'image/gif';
     if (mime.includes('webp')) return 'image/webp';
     return 'image/jpeg';
+  }
+
+  private async runUpcLookup(
+    productId: string,
+    visionAttrs: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const barcodes = this.upcLookup.extractBarcodesFromVisionResult(visionAttrs);
+      if (barcodes.length === 0) {
+        this.logger.log(`No barcodes detected in vision output for product=${productId}`);
+        return;
+      }
+
+      this.logger.log(`Found ${barcodes.length} barcode(s) for product=${productId}: ${barcodes.join(', ')}`);
+
+      for (const code of barcodes) {
+        const info = await this.upcLookup.lookupUpc(code);
+        if (!info) {
+          this.logger.warn(`UPC lookup returned no data for code=${code}`);
+          continue;
+        }
+
+        this.logger.log(
+          `✅ UPC lookup succeeded for ${code}: title="${info.title?.slice(0, 60)}", brand="${info.brand}"`,
+        );
+
+        const productUpdate: Record<string, string | null> = {};
+        if (info.upc) productUpdate['upc'] = info.upc;
+        if (info.ean) productUpdate['ean'] = info.ean;
+        if (info.brand) productUpdate['brand'] = info.brand;
+
+        const currentProduct = await this.prisma.product.findUnique({
+          where: { id: productId },
+        });
+        if (currentProduct) {
+          const updateData: Record<string, string> = {};
+          if (info.upc) updateData['upc'] = info.upc;
+          if (info.ean) updateData['ean'] = info.ean;
+          if (info.brand && !currentProduct.brand) updateData['brand'] = info.brand;
+          if (info.title && (!currentProduct.title || currentProduct.title === currentProduct.title)) {
+            const existingTitleAttr = await this.prisma.attribute.findFirst({
+              where: { productId, fieldName: 'title' },
+            });
+            if (!existingTitleAttr || !existingTitleAttr.value) {
+              updateData['title'] = info.title;
+            }
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await this.prisma.product.update({
+              where: { id: productId },
+              data: updateData,
+            });
+            this.logger.log(`Updated product=${productId} with UPC data: ${JSON.stringify(updateData)}`);
+          }
+        }
+
+        const upcFields: Array<[string, string | null]> = [
+          ['upc', info.upc],
+          ['ean', info.ean],
+          ['upc_title', info.title],
+          ['upc_brand', info.brand],
+          ['upc_description', info.description],
+          ['upc_category', info.category],
+          ['upc_manufacturer', info.manufacturer],
+          ['upc_color', info.color],
+          ['upc_size', info.size],
+          ['upc_weight', info.weight],
+          ['upc_dimensions', info.dimensions],
+        ];
+
+        for (const [fieldName, value] of upcFields) {
+          if (!value) continue;
+
+          const existing = await this.prisma.attribute.findFirst({
+            where: { productId, fieldName },
+          });
+
+          if (existing) {
+            if (!existing.value || existing.value === 'null') {
+              await this.prisma.attribute.update({
+                where: { id: existing.id },
+                data: { value, confidence: 0.95, gtinValidated: true },
+              });
+            }
+          } else {
+            await this.prisma.attribute.create({
+              data: {
+                productId,
+                fieldName,
+                value,
+                confidence: 0.95,
+                method: ExtractionMethod.STRUCTURED_PARSE,
+                requiresReview: false,
+                gtinValidated: true,
+              },
+            });
+          }
+        }
+
+        for (const [specName, specValue] of Object.entries(info.attributes)) {
+          if (!specValue) continue;
+          const fieldName = `upc_spec_${specName}`;
+          const existing = await this.prisma.attribute.findFirst({
+            where: { productId, fieldName },
+          });
+          if (!existing) {
+            await this.prisma.attribute.create({
+              data: {
+                productId,
+                fieldName,
+                value: specValue,
+                confidence: 0.9,
+                method: ExtractionMethod.STRUCTURED_PARSE,
+                requiresReview: false,
+                gtinValidated: true,
+              },
+            });
+          }
+        }
+
+        this.logger.log(`✅ UPC data stored for product=${productId}, code=${code}`);
+        break;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `UPC lookup failed (non-fatal) for product=${productId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async markCompleteIfReady(ingestionJobId: string): Promise<void> {

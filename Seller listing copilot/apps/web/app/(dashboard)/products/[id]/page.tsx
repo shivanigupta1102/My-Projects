@@ -5,12 +5,14 @@ import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  Barcode,
   CheckCircle2,
   ExternalLink,
   Eye,
   Loader2,
   Package,
   Pencil,
+  Search,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -19,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiGet, apiPost } from "@/lib/api";
@@ -145,6 +148,8 @@ export default function ProductTruthPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [upcInput, setUpcInput] = useState("");
+  const [upcLooking, setUpcLooking] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -187,6 +192,30 @@ export default function ProductTruthPage() {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleUpcLookup = async () => {
+    if (!upcInput.trim() || !id) return;
+    setUpcLooking(true);
+    try {
+      const result = await apiPost<{ upc: string; title: string | null; brand: string | null }>(
+        `/products/${id}/upc-lookup`,
+        { upc: upcInput.trim() },
+      );
+      if (result) {
+        toast.success(
+          `UPC found: ${result.title || result.brand || upcInput}`,
+        );
+        setUpcInput("");
+        await fetchData();
+      } else {
+        toast.error("No product data found for this UPC");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "UPC lookup failed");
+    } finally {
+      setUpcLooking(false);
     }
   };
 
@@ -345,6 +374,55 @@ export default function ProductTruthPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="border-border bg-surface">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Barcode className="h-4 w-4" />
+            UPC / Barcode Lookup
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-foreground-muted">
+            Enter a UPC, EAN, or barcode number to auto-populate product details from the database.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="e.g. 829576019311"
+              value={upcInput}
+              onChange={(e) => setUpcInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleUpcLookup();
+              }}
+              className="font-mono"
+              disabled={upcLooking}
+            />
+            <Button
+              onClick={() => void handleUpcLookup()}
+              disabled={upcLooking || !upcInput.trim()}
+              className="gap-2 shrink-0"
+            >
+              {upcLooking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              {upcLooking ? "Looking up..." : "Lookup UPC"}
+            </Button>
+          </div>
+          {product.upc && (
+            <div className="mt-3 flex items-center gap-2 rounded-md bg-green-50 dark:bg-green-950/30 p-2 text-sm text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              UPC: <span className="font-mono font-medium">{product.upc}</span>
+              {product.ean && (
+                <span className="text-foreground-muted">
+                  | EAN: <span className="font-mono">{product.ean}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {packages.length > 0 && (
         <Card className="border-border bg-surface">

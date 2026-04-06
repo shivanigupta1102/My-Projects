@@ -13,12 +13,19 @@ export class ShopifyGenerator implements ChannelGenerator {
 
   async generate(facts: CanonicalFacts): Promise<GeneratedChannelPackage> {
     const title = this.clip(facts.title ?? 'Untitled', SHOPIFY_TITLE_LIMIT);
+
+    const attrs = { ...facts.attributes };
+    const gtin = attrs['gtin'] || attrs['upc'] || attrs['ean'];
+    if (gtin) {
+      attrs['barcode'] = String(gtin);
+    }
+
     return {
       channel: this.channel,
       title,
       bullets: facts.bullets.slice(0, 20),
       description: facts.description,
-      attributes: { ...facts.attributes },
+      attributes: attrs,
       keywords: facts.keywords,
       images: facts.images,
     };

@@ -50,6 +50,7 @@ Return ONLY valid JSON. Extract ALL of the following fields — set null ONLY if
 
 CRITICAL RULES:
 - READ ALL TEXT visible on the product, labels, stickers, cases, and packaging
+- BARCODES/UPC: If you see ANY barcode (UPC, EAN, ISBN), read the NUMBERS below or near it. UPC codes are typically 12 digits, EAN codes are 13 digits. Include the full numeric code in barcodes_visible. This is critical for product identification.
 - For graded/certified items (PSA, BGS, CGC, SGC, JSA, Beckett, etc.): ALWAYS extract the certification company name AND the certification/serial number printed on the label or case
 - For sports cards: extract player, team, year, card number, set name, parallel/variant info
 - For collectibles: extract edition, serial numbers, authentication details

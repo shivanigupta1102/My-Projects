@@ -33,4 +33,9 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   upc?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ean?: string;
 }

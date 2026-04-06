@@ -21,6 +21,8 @@ import { JwtAuthGuard, Public } from '@/auth/guards/jwt-auth.guard';
 import { RequestUser } from '@/auth/interfaces/request-user.interface';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { UpcLookupService } from '@/ai/upc-lookup.service';
+import { PrismaService } from '@/config/database.config';
 import { CreateAttributeDto } from './dto/create-attribute.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -33,6 +35,8 @@ import { ProductsService } from './products.service';
 export class ProductsController {
   constructor(
     private readonly products: ProductsService,
+    private readonly upcLookup: UpcLookupService,
+    private readonly prisma: PrismaService,
     @InjectQueue('ingest-asset') private readonly ingestQueue: Queue,
   ) {}
 
@@ -169,6 +173,70 @@ export class ProductsController {
       queued++;
     }
     return { success: true, data: { queued, message: `Re-queued ${queued} asset(s) for AI extraction` } };
+  }
+
+  @Post(':id/upc-lookup')
+  @ApiOperation({ summary: 'Look up UPC/barcode and auto-populate product attributes' })
+  async upcLookupAction(
+    @CurrentUser() user: RequestUser,
+    @Param('id') id: string,
+    @Body() body: { upc: string },
+  ) {
+    const product = await this.products.getById(user.organizationId, id);
+    const info = await this.upcLookup.lookupUpc(body.upc);
+    if (!info) {
+      return { success: false, data: null, message: `No product data found for UPC: ${body.upc}` };
+    }
+
+    const productUpdate: Record<string, string> = {};
+    if (info.upc) productUpdate['upc'] = info.upc;
+    if (info.ean) productUpdate['ean'] = info.ean;
+    if (info.brand && !product.brand) productUpdate['brand'] = info.brand;
+    if (info.title) productUpdate['title'] = info.title;
+
+    if (Object.keys(productUpdate).length > 0) {
+      await this.prisma.product.update({
+        where: { id },
+        data: productUpdate,
+      });
+    }
+
+    const attrFields: Array<[string, string | null]> = [
+      ['upc', info.upc],
+      ['ean', info.ean],
+      ['upc_title', info.title],
+      ['upc_brand', info.brand],
+      ['upc_description', info.description],
+      ['upc_category', info.category],
+      ['upc_manufacturer', info.manufacturer],
+      ['upc_model', info.model],
+      ['upc_color', info.color],
+      ['upc_size', info.size],
+      ['upc_weight', info.weight],
+      ['upc_dimensions', info.dimensions],
+    ];
+
+    for (const [fieldName, value] of attrFields) {
+      if (!value) continue;
+      const existing = await this.prisma.attribute.findFirst({
+        where: { productId: id, fieldName },
+      });
+      if (!existing) {
+        await this.prisma.attribute.create({
+          data: {
+            productId: id,
+            fieldName,
+            value,
+            confidence: 0.95,
+            method: 'STRUCTURED_PARSE',
+            requiresReview: false,
+            gtinValidated: true,
+          },
+        });
+      }
+    }
+
+    return { success: true, data: info };
   }
 
   @Get(':id')

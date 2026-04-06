@@ -7,6 +7,7 @@ import { StorageModule } from '@/storage/storage.module';
 import { LlmService } from './llm.service';
 import { ExtractionPipeline } from './extraction.pipeline';
 import { OcrService } from './ocr.service';
+import { UpcLookupService } from './upc-lookup.service';
 import { VisionService } from './vision.service';
 
 @Module({
@@ -16,7 +17,7 @@ import { VisionService } from './vision.service';
     StorageModule,
     IngestionModule,
   ],
-  providers: [LlmService, OcrService, VisionService, ExtractionPipeline],
-  exports: [LlmService, OcrService, VisionService, ExtractionPipeline],
+  providers: [LlmService, OcrService, VisionService, ExtractionPipeline, UpcLookupService],
+  exports: [LlmService, OcrService, VisionService, ExtractionPipeline, UpcLookupService],
 })
 export class AiModule {}
